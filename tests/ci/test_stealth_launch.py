@@ -53,6 +53,7 @@ async def test_patchright_launcher_returns_cdp_url():
 
 		# Verify CDP is actually responding
 		import aiohttp
+
 		async with aiohttp.ClientSession() as http_session:
 			async with http_session.get(f'{handle.cdp_url}json/version') as resp:
 				assert resp.status == 200
@@ -73,6 +74,7 @@ async def test_patchright_launcher_cleanup():
 
 	# Verify CDP port is no longer responding
 	import aiohttp
+
 	await asyncio.sleep(0.5)
 	try:
 		async with aiohttp.ClientSession() as http_session:

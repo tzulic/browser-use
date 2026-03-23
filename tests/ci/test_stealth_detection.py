@@ -81,9 +81,7 @@ async def test_no_automation_flags(detection_server: HTTPServer):
 		has_webdriver_descriptor = result2.get('result', {}).get('value', True)
 		# In stealth mode, the property should not be defined on navigator as own property
 		# (normal Chrome defines it on the prototype, not as own property)
-		assert has_webdriver_descriptor is not True, (
-			'navigator should not have own webdriver property descriptor in stealth mode'
-		)
+		assert has_webdriver_descriptor is not True, 'navigator should not have own webdriver property descriptor in stealth mode'
 	finally:
 		await session.kill()
 
