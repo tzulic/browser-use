@@ -38,3 +38,44 @@ def test_stealth_in_browser_session_kwargs():
 	"""BrowserSession accepts stealth as a keyword argument."""
 	session = BrowserSession(stealth=False, headless=True)
 	assert session.browser_profile.stealth is False
+
+
+async def test_patchright_launcher_returns_cdp_url():
+	"""launch_stealth_browser() returns a valid CDP URL and cleanup handle."""
+	from browser_use.browser.patchright_launcher import launch_stealth_browser
+
+	profile = BrowserProfile(headless=True)
+	handle = await launch_stealth_browser(profile)
+	try:
+		assert handle.cdp_url.startswith('http://127.0.0.1:')
+		assert handle.debug_port > 0
+
+		# Verify CDP is actually responding
+		import aiohttp
+		async with aiohttp.ClientSession() as http_session:
+			async with http_session.get(f'{handle.cdp_url}json/version') as resp:
+				assert resp.status == 200
+				data = await resp.json()
+				assert 'webSocketDebuggerUrl' in data
+	finally:
+		await handle.close()
+
+
+async def test_patchright_launcher_cleanup():
+	"""Closing the handle shuts down browser and playwright."""
+	from browser_use.browser.patchright_launcher import launch_stealth_browser
+
+	profile = BrowserProfile(headless=True)
+	handle = await launch_stealth_browser(profile)
+	port = handle.debug_port
+	await handle.close()
+
+	# Verify CDP port is no longer responding
+	import aiohttp
+	await asyncio.sleep(0.5)
+	try:
+		async with aiohttp.ClientSession() as http_session:
+			async with http_session.get(f'http://127.0.0.1:{port}/json/version', timeout=aiohttp.ClientTimeout(total=2)) as resp:
+				assert False, 'CDP port still responding after close()'
+	except (aiohttp.ClientError, asyncio.TimeoutError):
+		pass  # Expected — port is closed
