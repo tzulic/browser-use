@@ -19,6 +19,7 @@ from browser_use.browser.events import (
 	BrowserLaunchResult,
 	BrowserStopEvent,
 )
+from browser_use.browser.patchright_launcher import PatchrightBrowserHandle
 from browser_use.browser.watchdog_base import BaseWatchdog
 from browser_use.observability import observe_debug
 
@@ -44,6 +45,7 @@ class LocalBrowserWatchdog(BaseWatchdog):
 	_owns_browser_resources: bool = PrivateAttr(default=True)
 	_temp_dirs_to_cleanup: list[Path] = PrivateAttr(default_factory=list)
 	_original_user_data_dir: str | None = PrivateAttr(default=None)
+	_patchright_handle: PatchrightBrowserHandle | None = PrivateAttr(default=None)
 
 	@observe_debug(ignore_input=True, ignore_output=True, name='browser_launch_event')
 	async def on_BrowserLaunchEvent(self, event: BrowserLaunchEvent) -> BrowserLaunchResult:
@@ -54,7 +56,8 @@ class LocalBrowserWatchdog(BaseWatchdog):
 
 			# self.logger.debug('[LocalBrowserWatchdog] Calling _launch_browser...')
 			process, cdp_url = await self._launch_browser()
-			self._subprocess = process
+			if process is not None:
+				self._subprocess = process
 			# self.logger.debug(f'[LocalBrowserWatchdog] _launch_browser returned: process={process}, cdp_url={cdp_url}')
 
 			return BrowserLaunchResult(cdp_url=cdp_url)
@@ -63,9 +66,15 @@ class LocalBrowserWatchdog(BaseWatchdog):
 			raise
 
 	async def on_BrowserKillEvent(self, event: BrowserKillEvent) -> None:
-		"""Kill the local browser subprocess."""
+		"""Kill the local browser subprocess or patchright handle."""
 		self.logger.debug('[LocalBrowserWatchdog] Killing local browser process')
 
+		# Clean up patchright handle if present
+		if self._patchright_handle is not None:
+			await self._patchright_handle.close()
+			self._patchright_handle = None
+
+		# Clean up subprocess if present
 		if self._subprocess:
 			await self._cleanup_process(self._subprocess)
 			self._subprocess = None
@@ -84,22 +93,33 @@ class LocalBrowserWatchdog(BaseWatchdog):
 
 	async def on_BrowserStopEvent(self, event: BrowserStopEvent) -> None:
 		"""Listen for BrowserStopEvent and dispatch BrowserKillEvent without awaiting it."""
-		if self.browser_session.is_local and self._subprocess:
+		if self.browser_session.is_local and (self._subprocess or self._patchright_handle):
 			self.logger.debug('[LocalBrowserWatchdog] BrowserStopEvent received, dispatching BrowserKillEvent')
 			# Dispatch BrowserKillEvent without awaiting so it gets processed after all BrowserStopEvent handlers
 			self.event_bus.dispatch(BrowserKillEvent())
 
 	@observe_debug(ignore_input=True, ignore_output=True, name='launch_browser_process')
-	async def _launch_browser(self, max_retries: int = 3) -> tuple[psutil.Process, str]:
+	async def _launch_browser(self, max_retries: int = 3) -> tuple[psutil.Process | None, str]:
 		"""Launch browser process and return (process, cdp_url).
 
 		Handles launch errors by falling back to temporary directories if needed.
+		When stealth mode is enabled, uses patchright launcher and returns (None, cdp_url).
 
 		Returns:
-			Tuple of (psutil.Process, cdp_url)
+			Tuple of (psutil.Process | None, cdp_url)
 		"""
-		# Keep track of original user_data_dir to restore if needed
 		profile = self.browser_session.browser_profile
+
+		# Stealth mode: use patchright launcher
+		if profile.stealth:
+			from browser_use.browser.patchright_launcher import launch_stealth_browser
+
+			handle = await launch_stealth_browser(profile)
+			self._patchright_handle = handle
+			return None, handle.cdp_url
+
+		# Non-stealth: existing subprocess launch
+		# Keep track of original user_data_dir to restore if needed
 		self._original_user_data_dir = str(profile.user_data_dir) if profile.user_data_dir else None
 		self._temp_dirs_to_cleanup = []
 
