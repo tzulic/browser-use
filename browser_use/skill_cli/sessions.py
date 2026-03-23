@@ -30,6 +30,7 @@ async def create_browser_session(
 	cloud_timeout: int | None = None,
 	cloud_proxy_country_code: str | None = None,
 	cloud_profile_id: str | None = None,
+	stealth: bool = True,
 ) -> BrowserSession:
 	"""Create BrowserSession based on connection mode.
 
@@ -54,6 +55,7 @@ async def create_browser_session(
 	if profile is None:
 		return BrowserSession(
 			headless=not headed,
+			stealth=stealth,
 		)
 
 	from browser_use.skill_cli.utils import find_chrome_executable, get_chrome_profile_path, list_chrome_profiles
@@ -99,4 +101,5 @@ async def create_browser_session(
 		user_data_dir=user_data_dir,
 		profile_directory=profile_directory,
 		headless=not headed,
+		stealth=stealth,
 	)

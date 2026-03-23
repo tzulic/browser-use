@@ -228,6 +228,7 @@ def ensure_daemon(
 	cloud_timeout: int | None = None,
 	cloud_proxy_country_code: str | None = None,
 	cloud_profile_id: str | None = None,
+	no_stealth: bool = False,
 ) -> None:
 	"""Start daemon if not running. Errors on config mismatch."""
 	if _is_daemon_alive(session):
@@ -280,6 +281,8 @@ def ensure_daemon(
 		cmd.extend(['--cloud-proxy-country', cloud_proxy_country_code])
 	if cloud_profile_id is not None:
 		cmd.extend(['--cloud-profile-id', cloud_profile_id])
+	if no_stealth:
+		cmd.append('--no-stealth')
 
 	# Set up environment
 	env = os.environ.copy()
@@ -391,6 +394,7 @@ Setup:
 		action='store_true',
 		help='Auto-discover and connect to running Chrome via CDP',
 	)
+	parser.add_argument('--no-stealth', action='store_true', help='Disable patchright stealth mode, use raw Chrome subprocess')
 	parser.add_argument('--session', default=None, help='Session name (default: "default")')
 	parser.add_argument('--json', action='store_true', help='Output as JSON')
 	parser.add_argument('--mcp', action='store_true', help='Run as MCP server (JSON-RPC via stdin/stdout)')
@@ -1044,11 +1048,11 @@ def main() -> int:
 	# Ensure daemon is running
 	# Only restart on config mismatch if the user explicitly passed config flags
 	explicit_config = any(flag in sys.argv for flag in ('--headed', '--profile', '--cdp-url', '--connect'))
-	ensure_daemon(args.headed, args.profile, args.cdp_url, session=session, explicit_config=explicit_config)
+	ensure_daemon(args.headed, args.profile, args.cdp_url, session=session, explicit_config=explicit_config, no_stealth=args.no_stealth)
 
 	# Build params from args
 	params = {}
-	skip_keys = {'command', 'headed', 'json', 'cdp_url', 'session', 'connect'}
+	skip_keys = {'command', 'headed', 'json', 'cdp_url', 'session', 'connect', 'no_stealth'}
 
 	for key, value in vars(args).items():
 		if key not in skip_keys and value is not None:
