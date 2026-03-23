@@ -36,7 +36,7 @@ Displayed as icon + text pairs near the top. Read from `browser-use state` outpu
 
 ## Technical Data Table
 
-Below the key specs, a detailed table of key-value pairs. In `browser-use state` output these appear as consecutive lines — label on one line, value on the next:
+Below the key specs, a detailed table of key-value pairs. The table is **initially truncated** — click the "Mehr anzeigen" button to expand all fields (Farbe, Getriebe, Schadstoffklasse, etc.). In `browser-use state` output these appear as consecutive lines — label on one line, value on the next:
 
 ```
 Fahrzeugzustand

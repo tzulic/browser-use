@@ -13,6 +13,18 @@ description: >
 
 Navigate mobile.de using browser-use CLI. Element indices change every page load — find elements by **stable identifiers** (id, aria-label, role) via `browser-use state`.
 
+## Working with State Output
+
+`browser-use state` output is typically 200-400 lines. Always pipe through grep to find elements:
+
+```bash
+browser-use state 2>&1 | grep "id=qs-select"       # find form fields by stable ID
+browser-use state 2>&1 | grep "€"                    # find prices / listing cards
+browser-use state 2>&1 | grep "button.*aria-label"    # find named buttons
+browser-use state 2>&1 | grep -B3 "TARGET_TEXT"       # find parent elements (e.g. <a> wrapping a listing)
+browser-use state 2>&1 | grep "Angebote" | tail -1    # find search/apply buttons
+```
+
 ## Prerequisites
 
 - browser-use CLI working (`browser-use doctor`)
@@ -46,18 +58,29 @@ The model dropdown (`id=qs-select-model`) on the homepage is a shadow DOM custom
 
 **Alternative — use URL parameters directly:**
 ```bash
-# ms= parameter encodes make and model IDs
-# Example: ms=14600%3B%3B51%3B = Mercedes-Benz GLC
-browser-use open "https://suchen.mobile.de/fahrzeuge/search.html?ms=14600%3B%3B51%3B&p=%3A50000&s=Car&vc=Car"
+browser-use open "https://suchen.mobile.de/fahrzeuge/search.html?ms=3500%3B%3B21%3B&p=%3A30000&s=Car&vc=Car"
 ```
+
+Common URL parameters:
+
+| Param | Meaning | Example |
+|-------|---------|---------|
+| `ms=` | Make;Model;Variant (encoded IDs, `;` = `%3B`) | `ms=3500%3B%3B21%3B` = BMW 3er |
+| `p=` | Price range (min:max) | `p=%3A30000` = up to 30k |
+| `ml=` | Mileage range | `ml=%3A100000` = up to 100k km |
+| `fr=` | Registration from year | `fr=2020%3A` = from 2020 |
+| `s=Car` | Vehicle type | Always `Car` for cars |
+| `vc=Car` | Vehicle class | Always `Car` for cars |
+
+IDs are opaque and change — always discover them by doing a manual search, then copying the `ms=` value from the results page URL. Do not guess IDs.
 
 ## Consent Dialog
 
-First visit without cookies shows a blocking consent dialog.
+First visit without cookies shows a blocking consent dialog. Not shown if the browser daemon already visited mobile.de in this session (cookies persist across commands).
 
 - **Detect:** `dialog` with `id=mde-consent-modal-dialog` in state
 - **Dismiss:** click button with text "Einverstanden"
-- **Skip:** not shown with `--profile` mode (existing cookies)
+- **Skip:** not shown with `--profile` mode (existing cookies) or if daemon already has mobile.de cookies from a previous command
 
 ## Anti-Detection
 

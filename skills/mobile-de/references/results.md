@@ -5,7 +5,7 @@ URL pattern: `https://suchen.mobile.de/fahrzeuge/search.html?...`
 ## Page Layout
 
 - **Header:** breadcrumb "Startseite > Meine Pkw-Suche > N Angebote"
-- **Result count:** heading "N Make Model Angebote" (e.g. "19.961 BMW Angebote")
+- **Result count:** heading "N Angebote" (e.g. "20.002 Angebote")
 - **Active filters:** tag chips below heading, each with `button[aria-label=Entfernen]` to remove
 - **Left sidebar:** filter controls
 - **Main area:** listing cards
@@ -26,6 +26,18 @@ Each filter has a pattern: `span[aria-label="X ändern"]` to open/edit.
 | EV filters | EV-specific | `id=ev-filter-label` |
 | Transmission | `Getriebe ändern` | `id=transmission-filter-label` |
 
+## Dialog Buttons Pattern
+
+All filter dialogs (model, location, advanced) end with the same button pair:
+- `<button>` with text "Abbrechen" (cancel)
+- `<button>` with text "N\nAngebote" (apply — always the LAST `<button>` in the dialog)
+
+To find the apply button index:
+```bash
+browser-use state 2>&1 | sed -n '/Abbrechen/,+3p'
+# The <button> after "Abbrechen" is the apply button
+```
+
 ## Setting Model (Workaround)
 
 The homepage model dropdown is unreliable. Set the model from the results page instead:
@@ -33,7 +45,7 @@ The homepage model dropdown is unreliable. Set the model from the results page i
 1. Click `span[aria-label="Marke, Modell, Variante ändern"]` to open dialog
 2. Dialog shows: Marke dropdown (`select[id=make-incl-0]`) and Modell dropdown (`select[id=model-incl-0]`)
 3. Make should already be set. Use `browser-use select <model-idx> "GLC"` on the model dropdown
-4. Find the apply button — it's the button showing the result count number (e.g. "1.699"), next to "Abbrechen"
+4. Find the apply button (see Dialog Buttons Pattern above)
 5. Click the apply button
 
 **Price filter:** two inputs with `aria-label=von` and `aria-label=bis` (from/to)
@@ -44,9 +56,11 @@ The homepage model dropdown is unreliable. Set the model from the results page i
 
 Scroll down in the sidebar to find "Außenfarbe" section. Colors are `label[title=X]` elements:
 
-Schwarz, Beige, Grau, Braun, Weiß, Orange, Blau, Gelb, Rot, Grün, Silber, Gold, Lila, Matt, Metallic
+Schwarz, Beige, Grau, Braun, Weiß, Orange, Blau, Gelb, Rot, Grün, Silber, Gold, Violett
 
-Click the label to toggle the color filter.
+Below the color labels, "Matt" and "Metallic" appear as finish sub-options (plain text, not `label[title=X]` elements).
+
+Click a `label[title=X]` to toggle that color filter.
 
 **Alternative:** Open "Weitere Filter" → click "Exterieur" tab → same color labels available.
 
@@ -92,7 +106,23 @@ Card content (as text in state output):
 - `button[aria-label=Parken]` — bookmark/save listing
 - `Kontakt` link — contact dealer
 
-**To open a listing:** find the `<a>` element above the listing content, click it, then `browser-use switch 1` to view the new tab.
+### Finding Listing Links
+
+Listing `<a>` elements appear immediately before the car name and price text. The first listings appear after `div#saveSearchBarContainer`.
+
+To find clickable listing links:
+```bash
+# Find <a> elements near prices (listings)
+browser-use state 2>&1 | grep -n "€" | head -5          # get line numbers of prices
+browser-use state 2>&1 | sed -n 'Np'                     # replace N with ~5 lines before the price line
+
+# Or grep backwards from a price to find the parent <a>
+browser-use state 2>&1 | grep -B5 "17.990 €" | grep "<a"
+```
+
+The `<a>` element index is what you click to open the listing. Scroll down first if listings aren't visible (`browser-use scroll down --amount 600`).
+
+**To open a listing:** click the `<a>` element, then `browser-use switch 1` to view the new tab.
 
 ## Pagination
 

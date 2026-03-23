@@ -17,7 +17,7 @@ Find elements by their stable `id` attribute using `browser-use state`, then use
 | Payment: Buy | `button[value=purchase]` | `click` | "Kaufen" — selected by default |
 | Payment: Lease | `button[value=leasing]` | `click` | "Leasen" |
 | Electric only | `input[value=ELECTRICITY]` | `click` | Checkbox |
-| Search button | text matching `Angebote` | `click` | Shows live result count |
+| Search button | last `<button>` in the search `<section>`, text contains "Angebote" | `click` | Shows live result count. Find: `browser-use state 2>&1 \| grep -B1 "Angebote$" \| tail -2` |
 
 ## Vehicle Category Tabs
 
