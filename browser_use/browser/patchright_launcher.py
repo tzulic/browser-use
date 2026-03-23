@@ -9,18 +9,19 @@ from __future__ import annotations
 import asyncio
 import atexit
 import logging
-import tempfile
+import shutil
 from typing import TYPE_CHECKING
 
-from patchright.async_api import Browser, BrowserContext, Playwright, async_playwright
-
 if TYPE_CHECKING:
+	from patchright.async_api import Browser, BrowserContext, Playwright
+
 	from browser_use.browser.profile import BrowserProfile
 
 logger = logging.getLogger(__name__)
 
-# Args that conflict with patchright's built-in stealth patches or are handled
-# via patchright's own API parameters (e.g. --user-data-dir is passed as user_data_dir=)
+# Reason: these args conflict with patchright's built-in stealth patches or are
+# handled via patchright's own API parameters (user_data_dir= kwarg, proxy= kwarg).
+# Passing them as raw Chrome flags AND via the API would cause double-handling.
 FILTERED_ARGS = frozenset(
 	{
 		'--enable-automation',
@@ -28,8 +29,15 @@ FILTERED_ARGS = frozenset(
 		'--disable-default-apps',
 		'--disable-component-update',
 		'--user-data-dir',
+		'--proxy-server',
+		'--proxy-bypass-list',
 	}
 )
+
+# Module-level set of active handles for atexit cleanup.
+# Handles remove themselves on close(), preventing accumulation.
+_active_handles: set[PatchrightBrowserHandle] = set()
+_atexit_registered = False
 
 
 class PatchrightBrowserHandle:
@@ -41,11 +49,15 @@ class PatchrightBrowserHandle:
 		debug_port: int,
 		playwright: Playwright,
 		browser: Browser | BrowserContext,
+		temp_dir: str | None = None,
 	):
 		self.cdp_url = cdp_url
 		self.debug_port = debug_port
 		self._playwright = playwright
-		self._browser = browser  # Browser from launch(), BrowserContext from launch_persistent_context()
+		# Reason: launch_persistent_context() returns BrowserContext, not Browser.
+		# Both have async close() that tears down the browser process.
+		self._browser = browser
+		self._temp_dir = temp_dir
 		self._closed = False
 
 	async def close(self) -> None:
@@ -53,6 +65,7 @@ class PatchrightBrowserHandle:
 		if self._closed:
 			return
 		self._closed = True
+		_active_handles.discard(self)
 		try:
 			await self._browser.close()
 		except Exception:
@@ -61,6 +74,10 @@ class PatchrightBrowserHandle:
 			await self._playwright.stop()
 		except Exception:
 			pass
+		# Clean up temp user data dir if we created one
+		if self._temp_dir:
+			shutil.rmtree(self._temp_dir, ignore_errors=True)
+			self._temp_dir = None
 
 
 def _filter_args(args: list[str]) -> list[str]:
@@ -75,8 +92,31 @@ def _filter_args(args: list[str]) -> list[str]:
 	return filtered
 
 
+def _ensure_atexit_registered() -> None:
+	"""Register a single atexit handler that cleans up all active handles."""
+	global _atexit_registered
+	if _atexit_registered:
+		return
+	_atexit_registered = True
+
+	def _cleanup_all():
+		for handle in list(_active_handles):
+			if not handle._closed:
+				try:
+					loop = asyncio.new_event_loop()
+					loop.run_until_complete(handle.close())
+					loop.close()
+				except Exception:
+					pass
+
+	atexit.register(_cleanup_all)
+
+
 async def launch_stealth_browser(profile: BrowserProfile) -> PatchrightBrowserHandle:
 	"""Launch browser via patchright and return a handle with CDP URL.
+
+	Does not mutate the profile object. Uses profile settings to configure
+	the patchright launch but keeps all state on the returned handle.
 
 	Args:
 		profile: BrowserProfile with launch configuration.
@@ -84,7 +124,9 @@ async def launch_stealth_browser(profile: BrowserProfile) -> PatchrightBrowserHa
 	Returns:
 		PatchrightBrowserHandle with cdp_url and cleanup method.
 	"""
-	# Reuse existing utilities from the watchdog
+	from patchright.async_api import async_playwright
+
+	# Reuse port-finding and CDP-polling utilities from the watchdog
 	from browser_use.browser.watchdogs.local_browser_watchdog import LocalBrowserWatchdog
 
 	pw = await async_playwright().start()
@@ -92,28 +134,25 @@ async def launch_stealth_browser(profile: BrowserProfile) -> PatchrightBrowserHa
 	# Pick a free port for CDP over TCP (alongside patchright's pipe)
 	debug_port = LocalBrowserWatchdog._find_free_port()
 
-	# Ensure user_data_dir is set — get_args() requires it, and BrowserProfile's
-	# field validator doesn't run for default None in Pydantic v2
+	# Ensure user_data_dir is set — Chrome 136+ requires a non-default --user-data-dir
+	# for --remote-debugging-port to work. BrowserProfile's validator creates one on
+	# construction, but direct BrowserProfile() without model_post_init may leave it None.
+	temp_dir = None
 	if profile.user_data_dir is None:
-		profile.user_data_dir = tempfile.mkdtemp(prefix='patchright-stealth-')
+		import tempfile
+
+		temp_dir = tempfile.mkdtemp(prefix='patchright-stealth-')
+		profile.user_data_dir = temp_dir
+	user_data_dir = str(profile.user_data_dir)
 
 	# Build args: inject debug port + pass through profile args (filtered)
 	profile_args = profile.get_args()
 	extra_args = _filter_args(profile_args)
 	launch_args = [f'--remote-debugging-port={debug_port}', *extra_args]
 
-	# Map proxy settings
-	proxy_config = None
-	if profile.proxy and profile.proxy.server:
-		proxy_config = {'server': profile.proxy.server}
-		if profile.proxy.bypass:
-			proxy_config['bypass'] = profile.proxy.bypass
-		if profile.proxy.username:
-			proxy_config['username'] = profile.proxy.username
-		if profile.proxy.password:
-			proxy_config['password'] = profile.proxy.password
+	# Map proxy via pydantic model_dump instead of manual dict construction
+	proxy_config = profile.proxy.model_dump(exclude_none=True) if (profile.proxy and profile.proxy.server) else None
 
-	# Warn if custom executable_path is set
 	if profile.executable_path:
 		logger.warning(
 			'Custom executable_path with stealth=True: stealth patches only apply to '
@@ -123,23 +162,16 @@ async def launch_stealth_browser(profile: BrowserProfile) -> PatchrightBrowserHa
 	logger.info('Launching with patchright stealth mode. Use stealth=False or --no-stealth to disable.')
 
 	try:
-		if profile.user_data_dir:
-			# launch_persistent_context returns BrowserContext (not Browser)
-			# Both have async close() — BrowserContext.close() also kills the browser
-			actual_browser: Browser | BrowserContext = await pw.chromium.launch_persistent_context(
-				user_data_dir=str(profile.user_data_dir),
-				headless=profile.headless if profile.headless is not None else True,
-				args=launch_args,
-				proxy=proxy_config,
-				executable_path=str(profile.executable_path) if profile.executable_path else None,
-			)
-		else:
-			actual_browser = await pw.chromium.launch(
-				headless=profile.headless if profile.headless is not None else True,
-				args=launch_args,
-				proxy=proxy_config,
-				executable_path=str(profile.executable_path) if profile.executable_path else None,
-			)
+		# Reason: always use launch_persistent_context because BrowserProfile's validator
+		# guarantees user_data_dir is set (creates a temp dir if needed). Chrome 136+
+		# requires a non-default --user-data-dir for --remote-debugging-port to work.
+		browser = await pw.chromium.launch_persistent_context(
+			user_data_dir=user_data_dir,
+			headless=profile.headless if profile.headless is not None else True,
+			args=launch_args,
+			proxy=proxy_config,
+			executable_path=str(profile.executable_path) if profile.executable_path else None,
+		)
 	except Exception as e:
 		await pw.stop()
 		error_msg = str(e).lower()
@@ -154,19 +186,12 @@ async def launch_stealth_browser(profile: BrowserProfile) -> PatchrightBrowserHa
 		cdp_url=cdp_url,
 		debug_port=debug_port,
 		playwright=pw,
-		browser=actual_browser,
+		browser=browser,
+		temp_dir=temp_dir,
 	)
 
-	# Safety net: register atexit to clean up on unclean Python exit
-	def _atexit_cleanup():
-		if not handle._closed:
-			try:
-				loop = asyncio.new_event_loop()
-				loop.run_until_complete(handle.close())
-				loop.close()
-			except Exception:
-				pass
-
-	atexit.register(_atexit_cleanup)
+	# Track for atexit cleanup (single handler, handles remove themselves on close)
+	_active_handles.add(handle)
+	_ensure_atexit_registered()
 
 	return handle
