@@ -159,6 +159,7 @@ class BrowserSession(BaseModel):
 		paint_order_filtering: bool | None = None,
 		max_iframes: int | None = None,
 		max_iframe_depth: int | None = None,
+		stealth: bool | None = None,
 	) -> None: ...
 
 	# Overload 2: Local browser mode (use local browser params)
@@ -173,6 +174,7 @@ class BrowserSession(BaseModel):
 		# Local browser launch params
 		executable_path: str | Path | None = None,
 		headless: bool | None = None,
+		stealth: bool | None = None,
 		user_data_dir: str | Path | None = None,
 		args: list[str] | None = None,
 		downloads_path: str | Path | None = None,
@@ -246,6 +248,7 @@ class BrowserSession(BaseModel):
 		env: dict[str, str | float | bool] | None = None,
 		executable_path: str | Path | None = None,
 		headless: bool | None = None,
+		stealth: bool | None = None,
 		args: list[str] | None = None,
 		ignore_default_args: list[str] | Literal[True] | None = None,
 		channel: str | None = None,
