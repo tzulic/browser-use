@@ -19,11 +19,11 @@ from browser_use.browser.events import (
 	BrowserLaunchResult,
 	BrowserStopEvent,
 )
-from browser_use.browser.patchright_launcher import PatchrightBrowserHandle
 from browser_use.browser.watchdog_base import BaseWatchdog
 from browser_use.observability import observe_debug
 
 if TYPE_CHECKING:
+	from browser_use.browser.patchright_launcher import PatchrightBrowserHandle
 	from browser_use.browser.profile import BrowserChannel
 
 

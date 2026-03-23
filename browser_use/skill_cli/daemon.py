@@ -41,7 +41,7 @@ class Daemon:
 		cloud_proxy_country_code: str | None = None,
 		cloud_profile_id: str | None = None,
 		session: str = 'default',
-		no_stealth: bool = False,
+		stealth: bool = True,
 	) -> None:
 		from browser_use.skill_cli.utils import validate_session_name
 
@@ -54,7 +54,7 @@ class Daemon:
 		self.cloud_timeout = cloud_timeout
 		self.cloud_proxy_country_code = cloud_proxy_country_code
 		self.cloud_profile_id = cloud_profile_id
-		self.no_stealth = no_stealth
+		self.stealth = stealth
 		self.running = True
 		self._server: asyncio.Server | None = None
 		self._shutdown_event = asyncio.Event()
@@ -81,7 +81,7 @@ class Daemon:
 			cloud_timeout=self.cloud_timeout,
 			cloud_proxy_country_code=self.cloud_proxy_country_code,
 			cloud_profile_id=self.cloud_profile_id,
-			stealth=not self.no_stealth,
+			stealth=self.stealth,
 		)
 		await bs.start()
 
@@ -320,7 +320,7 @@ def main() -> None:
 	parser.add_argument('--cloud-timeout', type=int, help='Cloud browser timeout in seconds')
 	parser.add_argument('--cloud-proxy-country', help='Cloud browser proxy country code')
 	parser.add_argument('--cloud-profile-id', help='Cloud browser profile ID')
-	parser.add_argument('--no-stealth', action='store_true', help='Disable patchright stealth mode')
+	parser.add_argument('--no-stealth', action='store_false', dest='stealth', help='Disable patchright stealth mode')
 	args = parser.parse_args()
 
 	logger.info(
@@ -336,7 +336,7 @@ def main() -> None:
 		cloud_proxy_country_code=args.cloud_proxy_country,
 		cloud_profile_id=args.cloud_profile_id,
 		session=args.session,
-		no_stealth=args.no_stealth,
+		stealth=args.stealth,
 	)
 
 	try:
