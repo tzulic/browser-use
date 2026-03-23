@@ -1,6 +1,7 @@
 """Tests for patchright stealth browser launch integration."""
 
 import asyncio
+import shutil
 import tempfile
 
 import pytest
@@ -105,3 +106,35 @@ async def test_stealth_false_uses_subprocess(http_server: HTTPServer):
 		assert 'Hello' in text
 	finally:
 		await session.kill()
+
+
+async def test_stealth_ignored_with_cdp_url(http_server: HTTPServer):
+	"""When cdp_url is provided, stealth is ignored (remote connection)."""
+	session1 = BrowserSession(stealth=True, headless=True)
+	await session1.start()
+	cdp_url = session1.cdp_url
+	assert cdp_url is not None
+
+	session2 = BrowserSession(cdp_url=cdp_url, stealth=True)
+	await session2.start()
+	await session2.navigate_to(http_server.url_for('/hello'))
+	state = await session2.get_browser_state_summary(include_screenshot=False)
+	assert state.dom_state is not None
+
+	await session2.kill()
+	await session1.kill()
+
+
+async def test_stealth_with_user_data_dir(http_server: HTTPServer):
+	"""Stealth mode works with user_data_dir (launch_persistent_context path)."""
+	tmp_dir = tempfile.mkdtemp(prefix='browseruse-stealth-test-')
+	session = BrowserSession(stealth=True, headless=True, user_data_dir=tmp_dir)
+	try:
+		await session.start()
+		await session.navigate_to(http_server.url_for('/hello'))
+		state = await session.get_browser_state_summary(include_screenshot=False)
+		text = state.dom_state.llm_representation()
+		assert 'Hello' in text
+	finally:
+		await session.kill()
+		shutil.rmtree(tmp_dir, ignore_errors=True)
