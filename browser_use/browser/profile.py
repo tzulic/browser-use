@@ -577,6 +577,10 @@ class BrowserProfile(BrowserConnectArgs, BrowserLaunchPersistentContextArgs, Bro
 
 	# custom options we provide that aren't native playwright kwargs
 	disable_security: bool = Field(default=False, description='Disable browser security features.')
+	stealth: bool = Field(
+		default=True,
+		description='Launch browser via patchright for anti-detection stealth. Set False to use raw Chrome subprocess launch. Ignored when cdp_url is provided.',
+	)
 	deterministic_rendering: bool = Field(default=False, description='Enable deterministic rendering flags.')
 	allowed_domains: list[str] | set[str] | None = Field(
 		default=None,
