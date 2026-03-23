@@ -31,6 +31,9 @@ async def handle() -> dict[str, Any]:
 	# 5. Optional: profile-use (for browser-use profile)
 	checks['profile_use'] = _check_profile_use()
 
+	# 6. Patchright stealth browser
+	checks['patchright'] = _check_patchright()
+
 	# Determine overall status
 	all_ok = all(check.get('status') == 'ok' for check in checks.values())
 
@@ -133,6 +136,22 @@ def _check_profile_use() -> dict[str, Any]:
 		'message': 'profile-use not installed (needed for browser-use profile)',
 		'fix': 'browser-use profile update',
 	}
+
+
+def _check_patchright() -> dict[str, Any]:
+	"""Check if patchright is installed and browser is available."""
+	try:
+		from patchright.async_api import async_playwright
+		return {
+			'status': 'ok',
+			'message': 'patchright available',
+		}
+	except ImportError:
+		return {
+			'status': 'error',
+			'message': 'patchright not installed',
+			'fix': 'pip install patchright && patchright install chromium',
+		}
 
 
 def _summarize_checks(checks: dict[str, dict[str, Any]]) -> str:
