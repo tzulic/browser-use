@@ -79,3 +79,29 @@ async def test_patchright_launcher_cleanup():
 				assert False, 'CDP port still responding after close()'
 	except (aiohttp.ClientError, asyncio.TimeoutError):
 		pass  # Expected — port is closed
+
+
+async def test_stealth_browser_session_e2e(http_server: HTTPServer):
+	"""Full end-to-end: BrowserSession(stealth=True) launches via patchright, navigates, extracts DOM."""
+	session = BrowserSession(stealth=True, headless=True)
+	try:
+		await session.start()
+		await session.navigate_to(http_server.url_for('/hello'))
+		state = await session.get_browser_state_summary(include_screenshot=False)
+		text = state.dom_state.llm_representation()
+		assert 'Hello' in text
+	finally:
+		await session.kill()
+
+
+async def test_stealth_false_uses_subprocess(http_server: HTTPServer):
+	"""stealth=False falls back to raw subprocess launch."""
+	session = BrowserSession(stealth=False, headless=True)
+	try:
+		await session.start()
+		await session.navigate_to(http_server.url_for('/hello'))
+		state = await session.get_browser_state_summary(include_screenshot=False)
+		text = state.dom_state.llm_representation()
+		assert 'Hello' in text
+	finally:
+		await session.kill()
