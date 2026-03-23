@@ -6,13 +6,13 @@ and exposes a CDP debug port for browser-use's CDP client to connect to.
 
 from __future__ import annotations
 
-import atexit
 import asyncio
+import atexit
 import logging
 import tempfile
 from typing import TYPE_CHECKING
 
-from patchright.async_api import async_playwright, Playwright, Browser, BrowserContext
+from patchright.async_api import Browser, BrowserContext, Playwright, async_playwright
 
 if TYPE_CHECKING:
 	from browser_use.browser.profile import BrowserProfile
@@ -21,13 +21,15 @@ logger = logging.getLogger(__name__)
 
 # Args that conflict with patchright's built-in stealth patches or are handled
 # via patchright's own API parameters (e.g. --user-data-dir is passed as user_data_dir=)
-FILTERED_ARGS = frozenset({
-	'--enable-automation',
-	'--disable-extensions',
-	'--disable-default-apps',
-	'--disable-component-update',
-	'--user-data-dir',
-})
+FILTERED_ARGS = frozenset(
+	{
+		'--enable-automation',
+		'--disable-extensions',
+		'--disable-default-apps',
+		'--disable-component-update',
+		'--user-data-dir',
+	}
+)
 
 
 class PatchrightBrowserHandle:
@@ -142,10 +144,7 @@ async def launch_stealth_browser(profile: BrowserProfile) -> PatchrightBrowserHa
 		await pw.stop()
 		error_msg = str(e).lower()
 		if 'executable' in error_msg or ('browser' in error_msg and 'not found' in error_msg):
-			raise RuntimeError(
-				"Patchright's patched Chromium is not installed. "
-				'Run: patchright install chromium'
-			) from e
+			raise RuntimeError("Patchright's patched Chromium is not installed. Run: patchright install chromium") from e
 		raise
 
 	# Wait for CDP to be ready on the TCP port
